@@ -1334,7 +1334,7 @@
 
   // ===== 詳細設定(外観) =====
   const bgPresets = [
-    { id: 'dark',  label: 'ダーク(標準)', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
+    { id: 'dark',  label: 'ダーク', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
     { id: 'pure',  label: 'ピュアホワイト', bg: '#ffffff', panel: '#f7f7f7', hairline: '#e2e2e2', ink: '#1a1a1a', inkDim: '#77797c' },
     { id: 'warm',  label: 'ウォームホワイト', bg: '#faf6f0', panel: '#f2ece1', hairline: '#e2d8c8', ink: '#2b2620', inkDim: '#8a8074' },
     { id: 'cool',  label: 'クールホワイト', bg: '#f4f7fb', panel: '#e9eef5', hairline: '#d3dbe6', ink: '#1c2733', inkDim: '#748094' },
@@ -1411,6 +1411,34 @@
   });
 
   renderBgSwatches();
+
+  // ===== 端末の配色設定(ダーク/ライト)に合わせて初期テーマを決める =====
+  function applySystemTheme(prefersLight) {
+    if (prefersLight) {
+      const lightPreset = bgPresets.find(p => p.id === 'pure');
+      if (lightPreset) applyBgPreset(lightPreset);
+      const blueAccent = '#2563eb'; // 白背景に合う青系のアクセントカラー
+      document.documentElement.style.setProperty('--accent', blueAccent);
+      document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(blueAccent));
+      accentColorInput.value = blueAccent;
+      accentHexLabel.textContent = blueAccent.toUpperCase();
+    } else {
+      const darkPreset = bgPresets.find(p => p.id === 'dark');
+      if (darkPreset) applyBgPreset(darkPreset);
+      const defaultAccent = '#ff6a3d';
+      document.documentElement.style.setProperty('--accent', defaultAccent);
+      document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(defaultAccent));
+      accentColorInput.value = defaultAccent;
+      accentHexLabel.textContent = defaultAccent.toUpperCase();
+    }
+  }
+
+  if (window.matchMedia) {
+    const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
+    applySystemTheme(lightSchemeQuery.matches);
+    // 端末の設定がその場で切り替わった場合も追従させる
+    lightSchemeQuery.addEventListener('change', (e) => applySystemTheme(e.matches));
+  }
 
   // ===== コピー =====
   function flashCopied(btn) {
