@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Chronograph</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #16181a;
+    --panel: #1f2225;
+    --hairline: #33373b;
+    --ink: #eae7e0;
+    --ink-dim: #86898c;
+    --accent: #ff6a3d;
+    --accent-ink: #1a1300;
+    --accent-dim: #6b3122;
+    --good: #4fd1a5;
+    --bad: #ff6a6a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 32px 16px;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+
+  .device {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  /* デスクトップ幅では画面いっぱいに広げ、要素も大きく表示する */
+  @media (min-width: 900px) and (min-height: 600px) {
+    .device {
+      max-width: 640px;
+      width: 90vw;
+    }
+
+    .display {
+      padding: 8vh 40px 5vh;
+    }
+
+    .time {
+      font-size: clamp(58px, 9vw, 128px);
+    }
+
+    .time .ms {
+      font-size: clamp(28px, 4.2vw, 60px);
+    }
+
+    .split-label {
+      font-size: 16px;
+      margin-top: 22px;
+    }
+
+    button {
+      padding: 26px 0;
+      font-size: 17px;
+    }
+
+    .laps {
+      margin-top: 40px;
+    }
+
+    .laps-list {
+      height: 38vh;
+    }
+
+    .lap-row {
+      font-size: 17px;
+      padding: 16px 4px;
+    }
+
+    .eyebrow {
+      font-size: 13px;
+      margin-bottom: 26px;
+    }
+  }
+
+  .eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--hairline);
+    display: inline-block;
+    margin-right: 6px;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .dot.live {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .display {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    padding: 44px 20px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .display::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .display.running::before { opacity: 0.7; }
+
+  .time {
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 58px;
+    letter-spacing: 0.01em;
+    line-height: 1;
+  }
+  .time .ms {
+    font-size: 28px;
+    color: var(--ink-dim);
+  }
+
+  .split-label {
+    margin-top: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    min-height: 16px;
+  }
+  .split-label span { color: var(--accent); }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  button {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    padding: 16px 0;
+    border-radius: 3px;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button:active { transform: scale(0.97); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink, #1a1300);
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary.stop {
+    background: var(--bad);
+    border-color: var(--bad);
+    color: #260000;
+  }
+
+  .btn-secondary:hover { border-color: var(--ink-dim); }
+  .btn-secondary:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .laps {
+    margin-top: 28px;
+  }
+
+  .laps-header {
+    display: grid;
+    grid-template-columns: 40px 1fr 1fr;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    padding: 0 4px 8px;
+    border-bottom: 1px solid var(--hairline);
+    align-items: center;
+  }
+
+  .col-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .col-head.align-right { justify-content: flex-end; }
+
+  .copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--ink-dim);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 4px;
+    border-radius: 2px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+  .copy-btn:hover { color: var(--accent); background: rgba(255,255,255,0.05); }
+  .copy-btn.copied { color: var(--good); }
+
+  .laps-list {
+    height: 280px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline) transparent;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .lap-row {
+    display: grid;
+    grid-template-columns: 40px 1fr 1fr;
+    align-items: center;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--hairline);
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    animation: rise 0.25s ease;
+  }
+  .lap-row:last-child { border-bottom: none; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .lap-num { color: var(--ink-dim); }
+  .lap-split.best { color: var(--good); }
+  .lap-split.worst { color: var(--bad); }
+  .lap-total { color: var(--ink-dim); text-align: right; }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 4px;
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lap-row { animation: none; }
+    * { transition: none !important; }
+  }
+
+  /* ===== 履歴サイドバー ===== */
+  .history-tab {
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 3px;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 60;
+    transition: border-color 0.15s, background 0.15s;
+    padding: 0;
+  }
+  .history-tab:hover { border-color: var(--ink-dim); }
+  .history-tab svg { width: 20px; height: 20px; stroke: var(--ink-dim); transition: stroke 0.15s; }
+  .history-tab.active { border-color: var(--accent); }
+  .history-tab.active svg { stroke: var(--accent); }
+
+  .history-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(340px, 88vw);
+    background: var(--panel);
+    border-right: 1px solid var(--hairline);
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    z-index: 55;
+    display: flex;
+    flex-direction: column;
+    padding-top: 84px;
+    box-shadow: 12px 0 32px rgba(0,0,0,0.4);
+  }
+  .history-panel.open { transform: translateX(0); }
+
+  .history-header {
+    padding: 0 20px 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 4px;
+  }
+
+  .history-list {
+    overflow-y: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline) transparent;
+  }
+
+  .history-empty {
+    padding: 24px 20px;
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .history-item {
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .history-item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    cursor: pointer;
+  }
+  .history-item-head:hover { background: rgba(255,255,255,0.03); }
+
+  .history-item-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .history-item-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 0.05em;
+  }
+  .history-item-total {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .history-item-laps {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .history-item-caret {
+    color: var(--ink-dim);
+    font-size: 10px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .history-item.open .history-item-caret { transform: rotate(90deg); }
+
+  .history-item-body {
+    display: none;
+    padding: 0 20px 14px;
+  }
+  .history-item.open .history-item-body { display: block; }
+
+  .history-reload-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 9px 0;
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--ink-dim);
+    border-radius: 3px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .history-reload-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .history-lap-row {
+    display: grid;
+    grid-template-columns: 26px 1fr 1fr;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    padding: 5px 0;
+    color: var(--ink-dim);
+  }
+  .history-lap-row .h-split { color: var(--ink); }
+  .history-lap-row .h-total { text-align: right; }
+
+  /* ===== 記録シート ===== */
+  .record-tab {
+    position: fixed;
+    top: 24px;
+    left: 80px;
+    width: 44px;
+    height: 44px;
+    border-radius: 3px;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 60;
+    transition: border-color 0.15s, background 0.15s;
+    padding: 0;
+  }
+  .record-tab:hover { border-color: var(--ink-dim); }
+  .record-tab svg { width: 20px; height: 20px; stroke: var(--ink-dim); transition: stroke 0.15s; }
+  .record-tab.active { border-color: var(--accent); }
+  .record-tab.active svg { stroke: var(--accent); }
+
+  /* ===== 詳細設定(外観) ===== */
+  .settings-tab {
+    position: fixed;
+    top: 24px;
+    left: 136px;
+    width: 44px;
+    height: 44px;
+    border-radius: 3px;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 60;
+    transition: border-color 0.15s, background 0.15s;
+    padding: 0;
+  }
+  .settings-tab:hover { border-color: var(--ink-dim); }
+  .settings-tab svg { width: 20px; height: 20px; stroke: var(--ink-dim); transition: stroke 0.15s; }
+  .settings-tab.active { border-color: var(--accent); }
+  .settings-tab.active svg { stroke: var(--accent); }
+
+  .settings-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(360px, 90vw);
+    background: var(--panel);
+    border-right: 1px solid var(--hairline);
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    z-index: 55;
+    display: flex;
+    flex-direction: column;
+    padding: 84px 0 20px;
+    box-shadow: 12px 0 32px rgba(0,0,0,0.4);
+    overflow-y: auto;
+  }
+  .settings-panel.open { transform: translateX(0); }
+
+  .settings-header {
+    padding: 0 20px 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 18px;
+  }
+
+  .settings-section {
+    padding: 0 20px 26px;
+  }
+  .settings-section-title {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .settings-section-desc {
+    font-size: 11px;
+    color: var(--ink-dim);
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+
+  .bg-swatches {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .bg-swatch {
+    border: 2px solid var(--hairline);
+    border-radius: 4px;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s;
+    background: transparent;
+  }
+  .bg-swatch.active { border-color: var(--accent); }
+  .bg-swatch-preview {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .bg-swatch-label {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 10px;
+    padding: 5px 4px;
+    text-align: center;
+    background: var(--panel);
+    color: var(--ink-dim);
+  }
+
+  .accent-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .accent-color-input {
+    width: 52px;
+    height: 40px;
+    border: 2px solid var(--hairline);
+    border-radius: 4px;
+    padding: 2px;
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .accent-hex-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+
+  .record-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(560px, 94vw);
+    background: var(--panel);
+    border-right: 1px solid var(--hairline);
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    z-index: 55;
+    display: flex;
+    flex-direction: column;
+    padding: 84px 0 20px;
+    box-shadow: 12px 0 32px rgba(0,0,0,0.4);
+  }
+  .record-panel.open { transform: translateX(0); }
+
+  .record-header {
+    padding: 0 20px 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 14px;
+  }
+
+  .record-recorder {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+  }
+  .record-recorder label {
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+  }
+  .record-recorder input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    color: var(--ink);
+    border-radius: 2px;
+    padding: 8px 10px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+  }
+  .record-recorder input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .record-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 20px 16px;
+  }
+  .record-actions button {
+    flex: 1;
+    min-width: 120px;
+    padding: 12px 8px;
+    font-size: 12px;
+  }
+
+  .record-table-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 0 20px;
+  }
+
+  .record-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .record-table th {
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    text-align: left;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .record-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline);
+    font-variant-numeric: tabular-nums;
+  }
+  .record-table input {
+    width: 100%;
+    min-width: 44px;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    color: var(--ink);
+    border-radius: 2px;
+    padding: 4px 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+  }
+  .record-table input[type="text"] { min-width: 120px; }
+  .record-table input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .record-empty {
+    padding: 24px 20px;
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+
+<button class="history-tab" id="historyTab" title="履歴を開く" aria-label="履歴を開く">
+  <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="13" r="8"></circle>
+    <path d="M12 9v4l2.5 2.5"></path>
+    <path d="M9 2h6"></path>
+  </svg>
+</button>
+
+<div class="history-panel" id="historyPanel">
+  <div class="history-header">履歴</div>
+  <div class="history-list" id="historyList">
+    <div class="history-empty" id="historyEmpty">リセットすると、それまでの計測がここに保存されます。</div>
+  </div>
+</div>
+
+<button class="record-tab" id="recordTab" title="記録シートを開く" aria-label="記録シートを開く">
+  <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 3h8l4 4v14H7z"></path>
+    <path d="M15 3v4h4"></path>
+    <path d="M9 13h6"></path>
+    <path d="M9 17h6"></path>
+  </svg>
+</button>
+
+<div class="record-panel" id="recordPanel">
+  <div class="record-header">記録シート</div>
+  <div class="record-recorder">
+    <label for="recorderName">記録者</label>
+    <input type="text" id="recorderName" placeholder="お名前を入力">
+  </div>
+  <div class="record-actions">
+    <button class="btn-secondary" id="downloadCsvBtn">CSVダウンロード</button>
+    <button class="btn-secondary" id="downloadXlsBtn">スプレッドシートでダウンロード</button>
+  </div>
+  <div class="record-table-wrap">
+    <table class="record-table" id="recordTable">
+      <thead>
+        <tr>
+          <th>枚数</th>
+          <th>タイム</th>
+          <th>タイム(総合)</th>
+          <th>修正数</th>
+          <th>ミス数</th>
+          <th>感想・変化</th>
+        </tr>
+      </thead>
+      <tbody id="recordTbody"></tbody>
+    </table>
+    <div class="record-empty" id="recordEmpty">ラップを取ると、ここに記録が自動で追加されます。</div>
+  </div>
+</div>
+
+<button class="settings-tab" id="settingsTab" title="詳細設定を開く" aria-label="詳細設定を開く">
+  <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.04z"></path>
+  </svg>
+</button>
+
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">詳細設定</div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">背景色</div>
+    <div class="settings-section-desc">背景を選ぶと、読みやすい文字色に自動で切り替わります。</div>
+    <div class="bg-swatches" id="bgSwatches"></div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">アクセントカラー</div>
+    <div class="settings-section-desc">ボタンやハイライトに使われる色です。パレットから自由に選べます。</div>
+    <div class="accent-picker-row">
+      <input type="color" id="accentColorInput" class="accent-color-input" value="#ff6a3d">
+      <span class="accent-hex-label" id="accentHexLabel">#FF6A3D</span>
+    </div>
+  </div>
+</div>
+
+<div class="device">
+  <div class="eyebrow">
+    <span><span class="dot" id="statusDot"></span>STOPWATCH</span>
+    <span id="lapCount">0 LAPS</span>
+  </div>
+
+  <div class="display" id="display">
+    <div class="time" id="timeMain">00:00<span class="ms">.00</span></div>
+    <div class="split-label" id="splitLabel">計測を開始してください</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-secondary" id="lapBtn" disabled>ラップ</button>
+    <button class="btn-primary" id="startBtn">開始</button>
+  </div>
+  <div class="controls" style="margin-top:10px;">
+    <button class="btn-secondary" id="resetBtn" disabled>リセット</button>
+  </div>
+
+  <div class="laps">
+    <div class="laps-header">
+      <span>#</span>
+      <span class="col-head">ラップタイム<button class="copy-btn" id="copySplits" title="ラップタイムを縦にコピー">⧉</button></span>
+      <span class="col-head align-right"><button class="copy-btn" id="copyTotals" title="合計タイムを縦にコピー">⧉</button>合計</span>
+    </div>
+    <div class="laps-list" id="lapsList">
+      <div class="empty-state" id="emptyState">まだラップがありません。<br>計測中に「ラップ」を押すと記録されます。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let running = false;
+  let startTime = 0;
+  let elapsedBeforePause = 0;
+  let rafId = null;
+  let lastRenderedMs = 0; // 画面に最後に表示した経過時間(リセット時のズレ防止用)
+  let laps = []; // {splitMs, totalMs}
+  let history = []; // {id, savedAt, laps: [...], totalMs}
+
+  const timeMain = document.getElementById('timeMain');
+  const display = document.getElementById('display');
+  const statusDot = document.getElementById('statusDot');
+  const splitLabel = document.getElementById('splitLabel');
+  const startBtn = document.getElementById('startBtn');
+  const lapBtn = document.getElementById('lapBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const lapsList = document.getElementById('lapsList');
+  const emptyState = document.getElementById('emptyState');
+  const lapCount = document.getElementById('lapCount');
+  const historyTab = document.getElementById('historyTab');
+  const historyPanel = document.getElementById('historyPanel');
+  const historyList = document.getElementById('historyList');
+  const historyEmpty = document.getElementById('historyEmpty');
+  const copySplitsBtn = document.getElementById('copySplits');
+  const copyTotalsBtn = document.getElementById('copyTotals');
+  const recordTab = document.getElementById('recordTab');
+  const recordPanel = document.getElementById('recordPanel');
+  const recordTbody = document.getElementById('recordTbody');
+  const recordEmpty = document.getElementById('recordEmpty');
+  const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+  const downloadXlsBtn = document.getElementById('downloadXlsBtn');
+  const recorderNameInput = document.getElementById('recorderName');
+  const settingsTab = document.getElementById('settingsTab');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const bgSwatches = document.getElementById('bgSwatches');
+  const accentColorInput = document.getElementById('accentColorInput');
+  const accentHexLabel = document.getElementById('accentHexLabel');
+  let records = []; // {sheet, splitMs, totalMs, corrections, misses, comment}
+
+  function formatTime(ms) {
+    const totalCs = Math.floor(ms / 10); // centiseconds
+    const cs = totalCs % 100;
+    const totalSec = Math.floor(totalCs / 100);
+    const sec = totalSec % 60;
+    const min = Math.floor(totalSec / 60);
+    const pad = (n, l = 2) => String(n).padStart(l, '0');
+    return { main: `${pad(min)}:${pad(sec)}`, ms: pad(cs) };
+  }
+
+  function currentElapsed() {
+    const raw = running ? (performance.now() - startTime + elapsedBeforePause) : elapsedBeforePause;
+    // 常に10ms(センチ秒)単位に丸めておくことで、ラップの区間タイムと
+    // 合計タイムを別々に表示したときに端数がズレないようにする
+    return Math.floor(raw / 10) * 10;
+  }
+
+  function render() {
+    const elapsed = currentElapsed();
+    lastRenderedMs = elapsed;
+    const t = formatTime(elapsed);
+    timeMain.innerHTML = `${t.main}<span class="ms">.${t.ms}</span>`;
+    if (running) {
+      rafId = requestAnimationFrame(render);
+    }
+  }
+
+  function updateLapCountLabel() {
+    lapCount.textContent = `${laps.length} LAPS`;
+  }
+
+  function renderLaps() {
+    if (laps.length === 0) {
+      lapsList.innerHTML = '';
+      lapsList.appendChild(emptyState);
+      updateLapCountLabel();
+      return;
+    }
+    emptyState.remove?.();
+
+    const splits = laps.map(l => l.splitMs);
+    const best = Math.min(...splits);
+    const worst = Math.max(...splits);
+    const showBestWorst = laps.length > 1;
+
+    lapsList.innerHTML = laps
+      .map(lap => {
+        const num = lap.index;
+        const splitT = formatTime(lap.splitMs);
+        const totalT = formatTime(lap.totalMs);
+        let cls = 'lap-split';
+        if (showBestWorst) {
+          if (lap.splitMs === best) cls += ' best';
+          else if (lap.splitMs === worst) cls += ' worst';
+        }
+        return `
+          <div class="lap-row">
+            <span class="lap-num">${String(num).padStart(2, '0')}</span>
+            <span class="${cls}">${splitT.main}.${splitT.ms}</span>
+            <span class="lap-total">${totalT.main}.${totalT.ms}</span>
+          </div>
+        `;
+      })
+      .join('');
+    updateLapCountLabel();
+  }
+
+  function setSplitLabel(text, accent = false) {
+    splitLabel.innerHTML = accent ? `<span>${text}</span>` : text;
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (!running) {
+      // start or resume
+      running = true;
+      startTime = performance.now();
+      startBtn.textContent = '一時停止';
+      startBtn.classList.remove('stop');
+      lapBtn.disabled = false;
+      resetBtn.disabled = false;
+      statusDot.classList.add('live');
+      display.classList.add('running');
+      setSplitLabel('計測中…', true);
+      render();
+    } else {
+      // pause
+      elapsedBeforePause = currentElapsed(); // running=falseにする前に計算する
+      running = false;
+      cancelAnimationFrame(rafId);
+      // 内部で確定させた値と画面表示を必ず一致させる
+      // (次の描画を待たずにここで更新しないと、表示だけ古い値のまま残ってしまう)
+      const pausedT = formatTime(elapsedBeforePause);
+      timeMain.innerHTML = `${pausedT.main}<span class="ms">.${pausedT.ms}</span>`;
+      lastRenderedMs = elapsedBeforePause;
+      startBtn.textContent = '再開';
+      lapBtn.disabled = true;
+      statusDot.classList.remove('live');
+      display.classList.remove('running');
+      setSplitLabel('一時停止中');
+    }
+  });
+
+  lapBtn.addEventListener('click', doLap);
+
+  resetBtn.addEventListener('click', () => {
+    // 実行中に押した場合、その瞬間に新しく計算し直すのではなく、
+    // 直前に画面へ表示していた値をそのまま使う(0.01秒増えるズレを防ぐ)
+    const finalElapsed = running ? lastRenderedMs : currentElapsed();
+    running = false;
+    cancelAnimationFrame(rafId);
+    saveToHistory(finalElapsed);
+    elapsedBeforePause = 0;
+    laps = [];
+    records = [];
+    timeMain.innerHTML = '00:00<span class="ms">.00</span>';
+    startBtn.textContent = '開始';
+    lapBtn.disabled = true;
+    resetBtn.disabled = true;
+    statusDot.classList.remove('live');
+    display.classList.remove('running');
+    setSplitLabel('計測を開始してください');
+    renderLaps();
+    renderRecords();
+  });
+
+  function doLap() {
+    if (!running) return;
+    const totalMs = currentElapsed();
+    const prevTotal = laps.length ? laps[laps.length - 1].totalMs : 0;
+    const splitMs = totalMs - prevTotal;
+    const lap = { index: laps.length + 1, splitMs, totalMs };
+    laps.push(lap);
+    renderLaps();
+    setSplitLabel('計測中…', true);
+
+    // ラップするたびに記録シートへ自動追加(枚数 = ラップ数)
+    records.push({
+      sheet: lap.index,
+      splitMs: lap.splitMs,
+      totalMs: lap.totalMs,
+      corrections: 0,
+      misses: 0,
+      comment: ''
+    });
+    renderRecords();
+  }
+
+  // ===== 履歴 =====
+  function saveToHistory(totalMsOverride) {
+    const totalMs = typeof totalMsOverride === 'number' ? totalMsOverride : currentElapsed();
+    if (laps.length === 0 && totalMs === 0) return; // 経過時間も無ければ保存しない
+    history.unshift({
+      id: Date.now(),
+      savedAt: new Date(),
+      laps: laps.map(l => ({ ...l })),
+      records: records.map(r => ({ ...r })),
+      totalMs
+    });
+    renderHistory();
+  }
+
+  function formatClock(date) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function renderHistory() {
+    if (history.length === 0) {
+      historyList.innerHTML = '';
+      historyList.appendChild(historyEmpty);
+      return;
+    }
+    historyEmpty.remove?.();
+
+    historyList.innerHTML = history.map(session => {
+      const totalT = formatTime(session.totalMs);
+      const lapsHtml = session.laps.map(lap => {
+        const splitT = formatTime(lap.splitMs);
+        const totalLapT = formatTime(lap.totalMs);
+        return `
+          <div class="history-lap-row">
+            <span>${String(lap.index).padStart(2, '0')}</span>
+            <span class="h-split">${splitT.main}.${splitT.ms}</span>
+            <span class="h-total">${totalLapT.main}.${totalLapT.ms}</span>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="history-item" data-id="${session.id}">
+          <div class="history-item-head">
+            <div class="history-item-meta">
+              <span class="history-item-time">${formatClock(session.savedAt)}</span>
+              <span class="history-item-total">${totalT.main}.${totalT.ms}</span>
+            </div>
+            <span class="history-item-laps">${session.laps.length} LAPS</span>
+            <span class="history-item-caret">▶</span>
+          </div>
+          <div class="history-item-body">
+            ${lapsHtml}
+            <button class="history-reload-btn" data-reload-id="${session.id}">この記録を読み込む</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  historyList.addEventListener('click', (e) => {
+    const reloadBtn = e.target.closest('.history-reload-btn');
+    if (reloadBtn) {
+      e.stopPropagation();
+      const id = Number(reloadBtn.dataset.reloadId);
+      const session = history.find(h => h.id === id);
+      if (!session) return;
+      if ((laps.length > 0 || records.length > 0) &&
+          !confirm('現在のラップ・記録表を上書きします。よろしいですか?')) {
+        return;
+      }
+      laps = session.laps.map(l => ({ ...l }));
+      records = session.records ? session.records.map(r => ({ ...r })) : [];
+      renderLaps();
+      renderRecords();
+
+      // 経過時間を0からではなく、読み込んだ記録の最後のタイムからそのまま再開する
+      running = false;
+      cancelAnimationFrame(rafId);
+      elapsedBeforePause = session.totalMs;
+      const t = formatTime(elapsedBeforePause);
+      timeMain.innerHTML = `${t.main}<span class="ms">.${t.ms}</span>`;
+      startBtn.textContent = '再開';
+      statusDot.classList.remove('live');
+      display.classList.remove('running');
+      setSplitLabel('一時停止中');
+
+      lapBtn.disabled = true;
+      resetBtn.disabled = false;
+      historyPanel.classList.remove('open');
+      historyTab.classList.remove('active');
+      return;
+    }
+    const head = e.target.closest('.history-item-head');
+    if (!head) return;
+    head.parentElement.classList.toggle('open');
+  });
+
+  historyTab.addEventListener('click', () => {
+    const willOpen = !historyPanel.classList.contains('open');
+    recordPanel.classList.remove('open');
+    recordTab.classList.remove('active');
+    settingsPanel.classList.remove('open');
+    settingsTab.classList.remove('active');
+    historyPanel.classList.toggle('open', willOpen);
+    historyTab.classList.toggle('active', willOpen);
+  });
+
+  // ===== 記録シート =====
+  function renderRecords() {
+    if (records.length === 0) {
+      recordTbody.innerHTML = '';
+      recordEmpty.style.display = 'block';
+      return;
+    }
+    recordEmpty.style.display = 'none';
+
+    recordTbody.innerHTML = records.map((rec, idx) => {
+      const splitT = formatTime(rec.splitMs);
+      const totalT = formatTime(rec.totalMs);
+      return `
+        <tr>
+          <td>${rec.sheet}</td>
+          <td>${splitT.main}.${splitT.ms}</td>
+          <td>${totalT.main}.${totalT.ms}</td>
+          <td><input type="number" min="0" inputmode="numeric" value="${rec.corrections}" data-field="corrections" data-idx="${idx}"></td>
+          <td><input type="number" min="0" inputmode="numeric" value="${rec.misses}" data-field="misses" data-idx="${idx}"></td>
+          <td><input type="text" value="${rec.comment.replace(/"/g, '&quot;')}" data-field="comment" data-idx="${idx}" placeholder="感想・変化"></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  recordTbody.addEventListener('input', (e) => {
+    const target = e.target;
+    const idx = Number(target.dataset.idx);
+    const field = target.dataset.field;
+    if (Number.isNaN(idx) || !records[idx]) return;
+    if (field === 'comment') {
+      records[idx].comment = target.value;
+    } else {
+      const n = parseInt(target.value, 10);
+      records[idx][field] = Number.isNaN(n) ? 0 : Math.max(0, n);
+    }
+  });
+
+  function csvField(value) {
+    const s = String(value ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function getRecorderLabel() {
+    const name = recorderNameInput.value.trim();
+    return name || '記録者未入力';
+  }
+
+  function buildDateStamp() {
+    const pad = n => String(n).padStart(2, '0');
+    const now = new Date();
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  }
+
+  downloadCsvBtn.addEventListener('click', () => {
+    const header = ['枚数', 'タイム', 'タイム(総合)', '修正数', 'ミス数', '感想・変化'];
+    const rows = records.map(rec => {
+      const splitT = formatTime(rec.splitMs);
+      const totalT = formatTime(rec.totalMs);
+      return [
+        rec.sheet,
+        `${splitT.main}.${splitT.ms}`,
+        `${totalT.main}.${totalT.ms}`,
+        rec.corrections,
+        rec.misses,
+        rec.comment
+      ];
+    });
+
+    const totalCorrections = records.reduce((sum, r) => sum + r.corrections, 0);
+    const totalMisses = records.reduce((sum, r) => sum + r.misses, 0);
+    const grandTotalMs = currentElapsed(); // ラップをしていなくても現在の経過時間を合計タイムとして表示する
+    const grandTotalT = formatTime(grandTotalMs);
+
+    const summaryHeaderRow = ['', '', '', '', '', '', '', '総合タイム', '総修正数', '総ミス数'];
+    const summaryValueRow = ['', '', '', '', '', '', '', `${grandTotalT.main}.${grandTotalT.ms}`, totalCorrections, totalMisses];
+
+    const lines = [header, ...rows, summaryHeaderRow, summaryValueRow]
+      .map(row => row.map(csvField).join(','));
+    const csv = '\uFEFF' + lines.join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${getRecorderLabel()}_タイム記録_${buildDateStamp()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // Googleスプレッドシート/Excelでそのまま開けるよう、
+  // 背景色・フォントサイズなどの見た目をHTMLテーブルとして埋め込んだ
+  // .xls ファイルを生成する(Googleスプレッドシートには
+  // 「ファイル > インポート」からアップロードすると取り込めます)。
+  downloadXlsBtn.addEventListener('click', () => {
+    const totalCorrections = records.reduce((sum, r) => sum + r.corrections, 0);
+    const totalMisses = records.reduce((sum, r) => sum + r.misses, 0);
+    const grandTotalMs = currentElapsed(); // ラップをしていなくても現在の経過時間を合計タイムとして表示する
+    const grandTotalT = formatTime(grandTotalMs);
+
+    const cellStyle = 'border:1px solid #999999;font-family:"游ゴシック","Yu Gothic",sans-serif;font-size:11pt;padding:4px 8px;';
+    const headStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:center;';
+    const sheetNumStyle = cellStyle + 'background-color:#434343;color:#ffffff;font-weight:bold;text-align:center;';
+    const bodyStyleA = cellStyle + 'background-color:#cfe9fb;color:#000000;';
+    const bodyStyleB = cellStyle + 'background-color:#eaf6fd;color:#000000;';
+    const bodyNumStyleA = bodyStyleA + 'text-align:right;';
+    const bodyNumStyleB = bodyStyleB + 'text-align:right;';
+    const bestStyleA = bodyStyleA + 'text-align:right;color:#188038;font-weight:bold;';
+    const bestStyleB = bodyStyleB + 'text-align:right;color:#188038;font-weight:bold;';
+    const worstStyleA = bodyStyleA + 'text-align:right;color:#cc0000;font-weight:bold;';
+    const worstStyleB = bodyStyleB + 'text-align:right;color:#cc0000;font-weight:bold;';
+    const summaryLabelStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:center;';
+    const summaryValStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:right;';
+    const titleStyle = 'font-family:"游ゴシック","Yu Gothic",sans-serif;font-size:14pt;font-weight:bold;padding:6px 0;';
+
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // 最速/最遅タイム、最多修正数/最多ミス数を判定(記録が2件以上ある場合のみ)
+    const hasSpread = records.length > 1;
+    const splitValues = records.map(r => r.splitMs);
+    const bestSplit = hasSpread ? Math.min(...splitValues) : null;
+    const worstSplit = hasSpread ? Math.max(...splitValues) : null;
+    const maxCorrections = Math.max(0, ...records.map(r => r.corrections));
+    const maxMisses = Math.max(0, ...records.map(r => r.misses));
+
+    const headerRow = `
+      <tr>
+        <th style="${headStyle}">枚数</th>
+        <th style="${headStyle}">タイム</th>
+        <th style="${headStyle}">タイム(総合)</th>
+        <th style="${headStyle}">修正数</th>
+        <th style="${headStyle}">ミス数</th>
+        <th style="${headStyle}">感想・変化</th>
+      </tr>`;
+
+    const dataRows = records.map((rec, idx) => {
+      const splitT = formatTime(rec.splitMs);
+      const totalT = formatTime(rec.totalMs);
+      const even = idx % 2 === 0;
+      const bStyle = even ? bodyStyleA : bodyStyleB;
+      const bNumStyle = even ? bodyNumStyleA : bodyNumStyleB;
+
+      let splitStyle = bNumStyle;
+      if (hasSpread && bestSplit !== worstSplit) {
+        if (rec.splitMs === bestSplit) splitStyle = even ? bestStyleA : bestStyleB;
+        else if (rec.splitMs === worstSplit) splitStyle = even ? worstStyleA : worstStyleB;
+      }
+
+      const correctionsStyle = (maxCorrections > 0 && rec.corrections === maxCorrections)
+        ? (even ? worstStyleA : worstStyleB)
+        : bNumStyle;
+      const missesStyle = (maxMisses > 0 && rec.misses === maxMisses)
+        ? (even ? worstStyleA : worstStyleB)
+        : bNumStyle;
+
+      return `
+        <tr>
+          <td style="${sheetNumStyle}">${rec.sheet}</td>
+          <td style="${splitStyle}">${splitT.main}.${splitT.ms}</td>
+          <td style="${bNumStyle}">${totalT.main}.${totalT.ms}</td>
+          <td style="${correctionsStyle}">${rec.corrections}</td>
+          <td style="${missesStyle}">${rec.misses}</td>
+          <td style="${bStyle}">${esc(rec.comment)}</td>
+        </tr>`;
+    }).join('');
+
+    const summaryRow = `
+      <tr>
+        <td style="${cellStyle}" colspan="4"></td>
+        <td style="${summaryLabelStyle}">総合タイム</td>
+        <td style="${summaryValStyle}">${grandTotalT.main}.${grandTotalT.ms}</td>
+      </tr>
+      <tr>
+        <td style="${cellStyle}" colspan="4"></td>
+        <td style="${summaryLabelStyle}">総修正数</td>
+        <td style="${summaryValStyle}">${totalCorrections}</td>
+      </tr>
+      <tr>
+        <td style="${cellStyle}" colspan="4"></td>
+        <td style="${summaryLabelStyle}">総ミス数</td>
+        <td style="${summaryValStyle}">${totalMisses}</td>
+      </tr>`;
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"></head>
+      <body>
+        <div style="${titleStyle}">タイム記録(記録者: ${esc(getRecorderLabel())})</div>
+        <table style="border-collapse:collapse;">
+          ${headerRow}
+          ${dataRows}
+          ${summaryRow}
+        </table>
+      </body>
+      </html>`;
+
+    const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${getRecorderLabel()}_タイム記録_${buildDateStamp()}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  recordTab.addEventListener('click', () => {
+    const willOpen = !recordPanel.classList.contains('open');
+    historyPanel.classList.remove('open');
+    historyTab.classList.remove('active');
+    settingsPanel.classList.remove('open');
+    settingsTab.classList.remove('active');
+    recordPanel.classList.toggle('open', willOpen);
+    recordTab.classList.toggle('active', willOpen);
+  });
+
+  // ===== 詳細設定(外観) =====
+  const bgPresets = [
+    { id: 'dark',  label: 'ダーク(標準)', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
+    { id: 'pure',  label: 'ピュアホワイト', bg: '#ffffff', panel: '#f7f7f7', hairline: '#e2e2e2', ink: '#1a1a1a', inkDim: '#77797c' },
+    { id: 'warm',  label: 'ウォームホワイト', bg: '#faf6f0', panel: '#f2ece1', hairline: '#e2d8c8', ink: '#2b2620', inkDim: '#8a8074' },
+    { id: 'cool',  label: 'クールホワイト', bg: '#f4f7fb', panel: '#e9eef5', hairline: '#d3dbe6', ink: '#1c2733', inkDim: '#748094' },
+    { id: 'gray',  label: 'ソフトグレー', bg: '#f2f2f2', panel: '#e8e8e8', hairline: '#d6d6d6', ink: '#222222', inkDim: '#7a7a7a' },
+    { id: 'ivory', label: 'アイボリー', bg: '#fffff2', panel: '#f7f6e6', hairline: '#e6e4cf', ink: '#2a2a1a', inkDim: '#8a8870' }
+  ];
+  let activeBgId = 'dark';
+
+  function applyBgPreset(preset) {
+    const root = document.documentElement.style;
+    root.setProperty('--bg', preset.bg);
+    root.setProperty('--panel', preset.panel);
+    root.setProperty('--hairline', preset.hairline);
+    root.setProperty('--ink', preset.ink);
+    root.setProperty('--ink-dim', preset.inkDim);
+    activeBgId = preset.id;
+    renderBgSwatches();
+  }
+
+  function renderBgSwatches() {
+    bgSwatches.innerHTML = bgPresets.map(p => `
+      <button type="button" class="bg-swatch${p.id === activeBgId ? ' active' : ''}" data-bg-id="${p.id}" title="${p.label}">
+        <span class="bg-swatch-preview" style="background:${p.bg};color:${p.ink};">Aa</span>
+        <span class="bg-swatch-label">${p.label}</span>
+      </button>
+    `).join('');
+  }
+
+  bgSwatches.addEventListener('click', (e) => {
+    const btn = e.target.closest('.bg-swatch');
+    if (!btn) return;
+    const preset = bgPresets.find(p => p.id === btn.dataset.bgId);
+    if (preset) applyBgPreset(preset);
+  });
+
+  function hexToRgb(hex) {
+    const m = hex.replace('#', '');
+    return {
+      r: parseInt(m.substring(0, 2), 16),
+      g: parseInt(m.substring(2, 4), 16),
+      b: parseInt(m.substring(4, 6), 16)
+    };
+  }
+
+  // 相対輝度(WCAG基準)を計算し、明るい色には黒系、暗い色には白系の文字色を返す
+  function relativeLuminance({ r, g, b }) {
+    const [rs, gs, bs] = [r, g, b].map(v => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  }
+
+  function pickInkForAccent(hex) {
+    const luminance = relativeLuminance(hexToRgb(hex));
+    return luminance > 0.5 ? '#1a1300' : '#fff8f2';
+  }
+
+  accentColorInput.addEventListener('input', () => {
+    const hex = accentColorInput.value;
+    document.documentElement.style.setProperty('--accent', hex);
+    document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(hex));
+    accentHexLabel.textContent = hex.toUpperCase();
+  });
+
+  settingsTab.addEventListener('click', () => {
+    const willOpen = !settingsPanel.classList.contains('open');
+    historyPanel.classList.remove('open');
+    historyTab.classList.remove('active');
+    recordPanel.classList.remove('open');
+    recordTab.classList.remove('active');
+    settingsPanel.classList.toggle('open', willOpen);
+    settingsTab.classList.toggle('active', willOpen);
+  });
+
+  renderBgSwatches();
+
+  // ===== コピー =====
+  function flashCopied(btn) {
+    const original = btn.textContent;
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 1200);
+  }
+
+  async function copyColumn(values, btn) {
+    const text = values.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      flashCopied(btn);
+    } catch (err) {
+      console.error('コピーに失敗しました', err);
+    }
+  }
+
+  copySplitsBtn.addEventListener('click', () => {
+    if (laps.length === 0) return;
+    const values = laps.map(l => {
+      const t = formatTime(l.splitMs);
+      return `${t.main}.${t.ms}`;
+    });
+    copyColumn(values, copySplitsBtn);
+  });
+
+  copyTotalsBtn.addEventListener('click', () => {
+    if (laps.length === 0) return;
+    const values = laps.map(l => {
+      const t = formatTime(l.totalMs);
+      return `${t.main}.${t.ms}`;
+    });
+    copyColumn(values, copyTotalsBtn);
+  });
+
+  // キーボード操作:
+  //   スペース   … ラップ
+  //   エンター   … 開始 / 一時停止(トグル)
+  //   R         … リセット
+  // 標準の挙動ではキーがどのボタンにフォーカスしているかによって
+  // そのボタンが誤って押されてしまうため、preventDefault と blur で
+  // フォーカスに依存しない専用の操作にする。
+  function isEditableTarget(el) {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    // 入力欄にフォーカスしている間や、日本語入力の変換中(IME確定前)は、
+    // ショートカットを無効にして通常の入力を優先する
+    if (isEditableTarget(e.target) || e.isComposing || e.keyCode === 229) {
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      blurActive();
+      doLap();
+    } else if (e.code === 'Enter') {
+      e.preventDefault();
+      blurActive();
+      startBtn.click();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      blurActive();
+      if (!resetBtn.disabled) resetBtn.click();
+    }
+  });
+
+  function blurActive() {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }
+
+  renderLaps();
+  renderHistory();
+  renderRecords();
+</script>
+
+</body>
+</html>
