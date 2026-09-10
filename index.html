@@ -322,14 +322,16 @@
     background: var(--panel);
     border-right: 1px solid var(--hairline);
     transform: translateX(-100%);
-    transition: transform 0.28s ease;
+    transition: transform 0.28s ease, box-shadow 0.28s ease;
     z-index: 55;
     display: flex;
     flex-direction: column;
     padding-top: 84px;
+  }
+  .history-panel.open {
+    transform: translateX(0);
     box-shadow: 12px 0 32px rgba(0,0,0,0.4);
   }
-  .history-panel.open { transform: translateX(0); }
 
   .history-header {
     padding: 0 20px 14px;
@@ -490,15 +492,17 @@
     background: var(--panel);
     border-right: 1px solid var(--hairline);
     transform: translateX(-100%);
-    transition: transform 0.28s ease;
+    transition: transform 0.28s ease, box-shadow 0.28s ease;
     z-index: 55;
     display: flex;
     flex-direction: column;
     padding: 84px 0 20px;
-    box-shadow: 12px 0 32px rgba(0,0,0,0.4);
     overflow-y: auto;
   }
-  .settings-panel.open { transform: translateX(0); }
+  .settings-panel.open {
+    transform: translateX(0);
+    box-shadow: 12px 0 32px rgba(0,0,0,0.4);
+  }
 
   .settings-header {
     padding: 0 20px 14px;
@@ -591,14 +595,16 @@
     background: var(--panel);
     border-right: 1px solid var(--hairline);
     transform: translateX(-100%);
-    transition: transform 0.28s ease;
+    transition: transform 0.28s ease, box-shadow 0.28s ease;
     z-index: 55;
     display: flex;
     flex-direction: column;
     padding: 84px 0 20px;
+  }
+  .record-panel.open {
+    transform: translateX(0);
     box-shadow: 12px 0 32px rgba(0,0,0,0.4);
   }
-  .record-panel.open { transform: translateX(0); }
 
   .record-header {
     padding: 0 20px 14px;
