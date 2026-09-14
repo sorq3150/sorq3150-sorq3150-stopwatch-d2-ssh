@@ -969,6 +969,8 @@
     const showBestWorst = laps.length > 1;
 
     lapsList.innerHTML = laps
+      .slice()
+      .reverse() // メインのラップ一覧だけ最新のラップが上に来るようにする
       .map(lap => {
         const num = lap.index;
         const splitT = formatTime(lap.splitMs);
