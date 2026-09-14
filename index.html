@@ -858,6 +858,67 @@
   const accentHexLabel = document.getElementById('accentHexLabel');
   let records = []; // {sheet, splitMs, totalMs, corrections, misses, comment}
 
+  // ===== 保存(このサイトに実際にアクセスしたときだけ有効。Claude.aiのプレビュー内では動作しないことがあります) =====
+  const STORAGE_KEYS = {
+    theme: 'stopwatch_theme_v1',
+    history: 'stopwatch_history_v1',
+    draft: 'stopwatch_draft_v1'
+  };
+
+  function storageGet(key) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storageSet(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      // 保存できない環境(プライベートブラウジング等)では何もしない
+    }
+  }
+
+  function storageRemove(key) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (e) { /* noop */ }
+  }
+
+  function saveThemeToStorage(bgId, accent) {
+    storageSet(STORAGE_KEYS.theme, { bgId, accent });
+  }
+
+  function saveHistoryToStorage() {
+    // 保存しすぎないよう直近50件まで
+    const trimmed = history.slice(0, 50).map(h => ({
+      ...h,
+      savedAt: h.savedAt.toISOString()
+    }));
+    storageSet(STORAGE_KEYS.history, trimmed);
+  }
+
+  function loadHistoryFromStorage() {
+    const saved = storageGet(STORAGE_KEYS.history);
+    if (!Array.isArray(saved)) return;
+    history = saved.map(h => ({ ...h, savedAt: new Date(h.savedAt) }));
+  }
+
+  function saveDraftToStorage() {
+    if (laps.length === 0 && records.length === 0 && elapsedBeforePause === 0) {
+      storageRemove(STORAGE_KEYS.draft);
+      return;
+    }
+    storageSet(STORAGE_KEYS.draft, { laps, records, elapsedBeforePause });
+  }
+
+  function clearDraftStorage() {
+    storageRemove(STORAGE_KEYS.draft);
+  }
+
   function formatTime(ms) {
     const totalCs = Math.floor(ms / 10); // centiseconds
     const cs = totalCs % 100;
@@ -957,6 +1018,7 @@
       statusDot.classList.remove('live');
       display.classList.remove('running');
       setSplitLabel('一時停止中');
+      saveDraftToStorage();
     }
   });
 
@@ -981,6 +1043,7 @@
     setSplitLabel('計測を開始してください');
     renderLaps();
     renderRecords();
+    clearDraftStorage();
   });
 
   function doLap() {
@@ -1003,6 +1066,7 @@
       comment: ''
     });
     renderRecords();
+    saveDraftToStorage();
   }
 
   // ===== 履歴 =====
@@ -1017,6 +1081,7 @@
       totalMs
     });
     renderHistory();
+    saveHistoryToStorage();
   }
 
   function formatClock(date) {
@@ -1096,6 +1161,7 @@
       resetBtn.disabled = false;
       historyPanel.classList.remove('open');
       historyTab.classList.remove('active');
+      saveDraftToStorage();
       return;
     }
     const head = e.target.closest('.history-item-head');
@@ -1149,6 +1215,7 @@
       const n = parseInt(target.value, 10);
       records[idx][field] = Number.isNaN(n) ? 0 : Math.max(0, n);
     }
+    saveDraftToStorage();
   });
 
   function csvField(value) {
@@ -1334,7 +1401,7 @@
 
   // ===== 詳細設定(外観) =====
   const bgPresets = [
-    { id: 'dark',  label: 'ダーク', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
+    { id: 'dark',  label: 'ダーク(標準)', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
     { id: 'pure',  label: 'ピュアホワイト', bg: '#ffffff', panel: '#f7f7f7', hairline: '#e2e2e2', ink: '#1a1a1a', inkDim: '#77797c' },
     { id: 'warm',  label: 'ウォームホワイト', bg: '#faf6f0', panel: '#f2ece1', hairline: '#e2d8c8', ink: '#2b2620', inkDim: '#8a8074' },
     { id: 'cool',  label: 'クールホワイト', bg: '#f4f7fb', panel: '#e9eef5', hairline: '#d3dbe6', ink: '#1c2733', inkDim: '#748094' },
@@ -1367,7 +1434,10 @@
     const btn = e.target.closest('.bg-swatch');
     if (!btn) return;
     const preset = bgPresets.find(p => p.id === btn.dataset.bgId);
-    if (preset) applyBgPreset(preset);
+    if (preset) {
+      applyBgPreset(preset);
+      saveThemeToStorage(activeBgId, accentColorInput.value);
+    }
   });
 
   function hexToRgb(hex) {
@@ -1398,6 +1468,7 @@
     document.documentElement.style.setProperty('--accent', hex);
     document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(hex));
     accentHexLabel.textContent = hex.toUpperCase();
+    saveThemeToStorage(activeBgId, hex);
   });
 
   settingsTab.addEventListener('click', () => {
@@ -1435,10 +1506,51 @@
 
   if (window.matchMedia) {
     const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
-    applySystemTheme(lightSchemeQuery.matches);
-    // 端末の設定がその場で切り替わった場合も追従させる
-    lightSchemeQuery.addEventListener('change', (e) => applySystemTheme(e.matches));
+    const savedTheme = storageGet(STORAGE_KEYS.theme);
+    if (savedTheme && savedTheme.bgId) {
+      // 前回保存した配色があれば、端末設定より優先して復元する
+      const savedPreset = bgPresets.find(p => p.id === savedTheme.bgId);
+      if (savedPreset) applyBgPreset(savedPreset);
+      const accent = savedTheme.accent || '#ff6a3d';
+      document.documentElement.style.setProperty('--accent', accent);
+      document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(accent));
+      accentColorInput.value = accent;
+      accentHexLabel.textContent = accent.toUpperCase();
+    } else {
+      applySystemTheme(lightSchemeQuery.matches);
+    }
+    // 端末の設定がその場で切り替わった場合も追従させる(保存済み設定が無い場合のみ)
+    lightSchemeQuery.addEventListener('change', (e) => {
+      if (!storageGet(STORAGE_KEYS.theme)) applySystemTheme(e.matches);
+    });
   }
+
+  // ===== 前回の履歴・作業中データを復元 =====
+  loadHistoryFromStorage();
+  renderHistory();
+
+  (function restoreDraft() {
+    const draft = storageGet(STORAGE_KEYS.draft);
+    if (!draft) return;
+    const draftLaps = Array.isArray(draft.laps) ? draft.laps : [];
+    const draftRecords = Array.isArray(draft.records) ? draft.records : [];
+    const draftElapsed = typeof draft.elapsedBeforePause === 'number' ? draft.elapsedBeforePause : 0;
+    if (draftLaps.length === 0 && draftRecords.length === 0 && draftElapsed === 0) return;
+
+    laps = draftLaps;
+    records = draftRecords;
+    elapsedBeforePause = draftElapsed;
+    renderLaps();
+    renderRecords();
+
+    const t = formatTime(elapsedBeforePause);
+    timeMain.innerHTML = `${t.main}<span class="ms">.${t.ms}</span>`;
+    lastRenderedMs = elapsedBeforePause;
+    startBtn.textContent = elapsedBeforePause > 0 ? '再開' : '開始';
+    resetBtn.disabled = false;
+    lapBtn.disabled = true;
+    setSplitLabel('前回の続きから再開できます');
+  })();
 
   // ===== コピー =====
   function flashCopied(btn) {
