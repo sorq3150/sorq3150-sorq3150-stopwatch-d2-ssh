@@ -648,6 +648,36 @@
     gap: 10px;
     padding: 0 20px 16px;
   }
+
+  .record-overall {
+    padding: 14px 20px 0;
+    border-top: 1px solid var(--hairline);
+    margin-top: 14px;
+  }
+  .record-overall label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+    margin-bottom: 8px;
+  }
+  .record-overall textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    color: var(--ink);
+    border-radius: 2px;
+    padding: 8px 10px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  .record-overall textarea:focus {
+    outline: 1px solid var(--accent);
+    border-color: var(--accent);
+  }
   .record-actions button {
     flex: 1;
     min-width: 120px;
@@ -707,6 +737,7 @@
     line-height: 1.7;
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -741,8 +772,7 @@
     <input type="text" id="recorderName" placeholder="お名前を入力">
   </div>
   <div class="record-actions">
-    <button class="btn-secondary" id="downloadCsvBtn">CSVダウンロード</button>
-    <button class="btn-secondary" id="downloadXlsBtn">スプレッドシートでダウンロード</button>
+    <button class="btn-secondary" id="downloadCsvBtn">xlsxダウンロード</button>
   </div>
   <div class="record-table-wrap">
     <table class="record-table" id="recordTable">
@@ -759,6 +789,10 @@
       <tbody id="recordTbody"></tbody>
     </table>
     <div class="record-empty" id="recordEmpty">ラップを取ると、ここに記録が自動で追加されます。</div>
+  </div>
+  <div class="record-overall">
+    <label for="overallComment">総合の感想</label>
+    <textarea id="overallComment" rows="3" placeholder="全体を通しての感想・気づいたことなど"></textarea>
   </div>
 </div>
 
@@ -849,8 +883,8 @@
   const recordTbody = document.getElementById('recordTbody');
   const recordEmpty = document.getElementById('recordEmpty');
   const downloadCsvBtn = document.getElementById('downloadCsvBtn');
-  const downloadXlsBtn = document.getElementById('downloadXlsBtn');
   const recorderNameInput = document.getElementById('recorderName');
+  const overallCommentInput = document.getElementById('overallComment');
   const settingsTab = document.getElementById('settingsTab');
   const settingsPanel = document.getElementById('settingsPanel');
   const bgSwatches = document.getElementById('bgSwatches');
@@ -912,11 +946,14 @@
   }
 
   function saveDraftToStorage() {
-    if (laps.length === 0 && records.length === 0 && elapsedBeforePause === 0) {
+    const recorderName = recorderNameInput ? recorderNameInput.value : '';
+    const overallComment = overallCommentInput ? overallCommentInput.value : '';
+    if (laps.length === 0 && records.length === 0 && elapsedBeforePause === 0 &&
+        !recorderName && !overallComment) {
       storageRemove(STORAGE_KEYS.draft);
       return;
     }
-    storageSet(STORAGE_KEYS.draft, { laps, records, elapsedBeforePause });
+    storageSet(STORAGE_KEYS.draft, { laps, records, elapsedBeforePause, recorderName, overallComment });
   }
 
   function clearDraftStorage() {
@@ -1049,6 +1086,7 @@
     setSplitLabel('計測を開始してください');
     renderLaps();
     renderRecords();
+    overallCommentInput.value = ''; // 記録者名は続けて使うことが多いため残す
     clearDraftStorage();
   });
 
@@ -1084,6 +1122,8 @@
       savedAt: new Date(),
       laps: laps.map(l => ({ ...l })),
       records: records.map(r => ({ ...r })),
+      recorderName: recorderNameInput ? recorderNameInput.value : '',
+      overallComment: overallCommentInput ? overallCommentInput.value : '',
       totalMs
     });
     renderHistory();
@@ -1149,6 +1189,8 @@
       }
       laps = session.laps.map(l => ({ ...l }));
       records = session.records ? session.records.map(r => ({ ...r })) : [];
+      if (typeof session.recorderName === 'string') recorderNameInput.value = session.recorderName;
+      if (typeof session.overallComment === 'string') overallCommentInput.value = session.overallComment;
       renderLaps();
       renderRecords();
 
@@ -1224,10 +1266,9 @@
     saveDraftToStorage();
   });
 
-  function csvField(value) {
-    const s = String(value ?? '');
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  }
+  // 記録者名・総合の感想も入力のたびに保存する
+  recorderNameInput.addEventListener('input', saveDraftToStorage);
+  overallCommentInput.addEventListener('input', saveDraftToStorage);
 
   function getRecorderLabel() {
     const name = recorderNameInput.value.trim();
@@ -1241,8 +1282,28 @@
   }
 
   downloadCsvBtn.addEventListener('click', () => {
+    // 書き出し時は「停止した時点」のタイムを使う。
+    // 計測中に押した場合は、直前に画面表示していた値を採用してズレを防ぐ。
+    const finalElapsed = running ? lastRenderedMs : currentElapsed();
+
+    // 最後のラップ以降にも経過時間があれば、停止時点までを最後の1件として書き出す
+    const exportRecords = records.map(r => ({ ...r }));
+    const lastTotal = exportRecords.length
+      ? exportRecords[exportRecords.length - 1].totalMs
+      : 0;
+    if (finalElapsed > lastTotal) {
+      exportRecords.push({
+        sheet: exportRecords.length + 1,
+        splitMs: finalElapsed - lastTotal,
+        totalMs: finalElapsed,
+        corrections: 0,
+        misses: 0,
+        comment: ''
+      });
+    }
+
     const header = ['枚数', 'タイム', 'タイム(総合)', '修正数', 'ミス数', '感想・変化'];
-    const rows = records.map(rec => {
+    const rows = exportRecords.map(rec => {
       const splitT = formatTime(rec.splitMs);
       const totalT = formatTime(rec.totalMs);
       return [
@@ -1255,144 +1316,26 @@
       ];
     });
 
-    const totalCorrections = records.reduce((sum, r) => sum + r.corrections, 0);
-    const totalMisses = records.reduce((sum, r) => sum + r.misses, 0);
-    const grandTotalMs = currentElapsed(); // ラップをしていなくても現在の経過時間を合計タイムとして表示する
-    const grandTotalT = formatTime(grandTotalMs);
+    const totalCorrections = exportRecords.reduce((sum, r) => sum + r.corrections, 0);
+    const totalMisses = exportRecords.reduce((sum, r) => sum + r.misses, 0);
+    const grandTotalT = formatTime(finalElapsed);
 
     const summaryHeaderRow = ['', '', '', '', '', '', '', '総合タイム', '総修正数', '総ミス数'];
     const summaryValueRow = ['', '', '', '', '', '', '', `${grandTotalT.main}.${grandTotalT.ms}`, totalCorrections, totalMisses];
+    const nameRow = ['記録者', getRecorderLabel()];
+    const overallRow = ['総合の感想', overallCommentInput.value];
 
-    const lines = [header, ...rows, summaryHeaderRow, summaryValueRow]
-      .map(row => row.map(csvField).join(','));
-    const csv = '\uFEFF' + lines.join('\r\n');
+    const aoa = [header, ...rows, summaryHeaderRow, summaryValueRow, [], nameRow, overallRow];
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getRecorderLabel()}_タイム記録_${buildDateStamp()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [
+      { wch: 8 }, { wch: 12 }, { wch: 14 },
+      { wch: 8 }, { wch: 8 }, { wch: 40 }
+    ];
 
-  // Googleスプレッドシート/Excelでそのまま開けるよう、
-  // 背景色・フォントサイズなどの見た目をHTMLテーブルとして埋め込んだ
-  // .xls ファイルを生成する(Googleスプレッドシートには
-  // 「ファイル > インポート」からアップロードすると取り込めます)。
-  downloadXlsBtn.addEventListener('click', () => {
-    const totalCorrections = records.reduce((sum, r) => sum + r.corrections, 0);
-    const totalMisses = records.reduce((sum, r) => sum + r.misses, 0);
-    const grandTotalMs = currentElapsed(); // ラップをしていなくても現在の経過時間を合計タイムとして表示する
-    const grandTotalT = formatTime(grandTotalMs);
-
-    const cellStyle = 'border:1px solid #999999;font-family:"游ゴシック","Yu Gothic",sans-serif;font-size:11pt;padding:4px 8px;';
-    const headStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:center;';
-    const sheetNumStyle = cellStyle + 'background-color:#434343;color:#ffffff;font-weight:bold;text-align:center;';
-    const bodyStyleA = cellStyle + 'background-color:#cfe9fb;color:#000000;';
-    const bodyStyleB = cellStyle + 'background-color:#eaf6fd;color:#000000;';
-    const bodyNumStyleA = bodyStyleA + 'text-align:right;';
-    const bodyNumStyleB = bodyStyleB + 'text-align:right;';
-    const bestStyleA = bodyStyleA + 'text-align:right;color:#188038;font-weight:bold;';
-    const bestStyleB = bodyStyleB + 'text-align:right;color:#188038;font-weight:bold;';
-    const worstStyleA = bodyStyleA + 'text-align:right;color:#cc0000;font-weight:bold;';
-    const worstStyleB = bodyStyleB + 'text-align:right;color:#cc0000;font-weight:bold;';
-    const summaryLabelStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:center;';
-    const summaryValStyle = cellStyle + 'background-color:#1c4587;color:#ffffff;font-weight:bold;text-align:right;';
-    const titleStyle = 'font-family:"游ゴシック","Yu Gothic",sans-serif;font-size:14pt;font-weight:bold;padding:6px 0;';
-
-    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    // 最速/最遅タイム、最多修正数/最多ミス数を判定(記録が2件以上ある場合のみ)
-    const hasSpread = records.length > 1;
-    const splitValues = records.map(r => r.splitMs);
-    const bestSplit = hasSpread ? Math.min(...splitValues) : null;
-    const worstSplit = hasSpread ? Math.max(...splitValues) : null;
-    const maxCorrections = Math.max(0, ...records.map(r => r.corrections));
-    const maxMisses = Math.max(0, ...records.map(r => r.misses));
-
-    const headerRow = `
-      <tr>
-        <th style="${headStyle}">枚数</th>
-        <th style="${headStyle}">タイム</th>
-        <th style="${headStyle}">タイム(総合)</th>
-        <th style="${headStyle}">修正数</th>
-        <th style="${headStyle}">ミス数</th>
-        <th style="${headStyle}">感想・変化</th>
-      </tr>`;
-
-    const dataRows = records.map((rec, idx) => {
-      const splitT = formatTime(rec.splitMs);
-      const totalT = formatTime(rec.totalMs);
-      const even = idx % 2 === 0;
-      const bStyle = even ? bodyStyleA : bodyStyleB;
-      const bNumStyle = even ? bodyNumStyleA : bodyNumStyleB;
-
-      let splitStyle = bNumStyle;
-      if (hasSpread && bestSplit !== worstSplit) {
-        if (rec.splitMs === bestSplit) splitStyle = even ? bestStyleA : bestStyleB;
-        else if (rec.splitMs === worstSplit) splitStyle = even ? worstStyleA : worstStyleB;
-      }
-
-      const correctionsStyle = (maxCorrections > 0 && rec.corrections === maxCorrections)
-        ? (even ? worstStyleA : worstStyleB)
-        : bNumStyle;
-      const missesStyle = (maxMisses > 0 && rec.misses === maxMisses)
-        ? (even ? worstStyleA : worstStyleB)
-        : bNumStyle;
-
-      return `
-        <tr>
-          <td style="${sheetNumStyle}">${rec.sheet}</td>
-          <td style="${splitStyle}">${splitT.main}.${splitT.ms}</td>
-          <td style="${bNumStyle}">${totalT.main}.${totalT.ms}</td>
-          <td style="${correctionsStyle}">${rec.corrections}</td>
-          <td style="${missesStyle}">${rec.misses}</td>
-          <td style="${bStyle}">${esc(rec.comment)}</td>
-        </tr>`;
-    }).join('');
-
-    const summaryRow = `
-      <tr>
-        <td style="${cellStyle}" colspan="4"></td>
-        <td style="${summaryLabelStyle}">総合タイム</td>
-        <td style="${summaryValStyle}">${grandTotalT.main}.${grandTotalT.ms}</td>
-      </tr>
-      <tr>
-        <td style="${cellStyle}" colspan="4"></td>
-        <td style="${summaryLabelStyle}">総修正数</td>
-        <td style="${summaryValStyle}">${totalCorrections}</td>
-      </tr>
-      <tr>
-        <td style="${cellStyle}" colspan="4"></td>
-        <td style="${summaryLabelStyle}">総ミス数</td>
-        <td style="${summaryValStyle}">${totalMisses}</td>
-      </tr>`;
-
-    const html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="UTF-8"></head>
-      <body>
-        <div style="${titleStyle}">タイム記録(記録者: ${esc(getRecorderLabel())})</div>
-        <table style="border-collapse:collapse;">
-          ${headerRow}
-          ${dataRows}
-          ${summaryRow}
-        </table>
-      </body>
-      </html>`;
-
-    const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getRecorderLabel()}_タイム記録_${buildDateStamp()}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'タイム記録');
+    XLSX.writeFile(wb, `${getRecorderLabel()}_タイム記録_${buildDateStamp()}.xlsx`);
   });
 
   recordTab.addEventListener('click', () => {
@@ -1546,11 +1489,18 @@
     const draftLaps = Array.isArray(draft.laps) ? draft.laps : [];
     const draftRecords = Array.isArray(draft.records) ? draft.records : [];
     const draftElapsed = typeof draft.elapsedBeforePause === 'number' ? draft.elapsedBeforePause : 0;
-    if (draftLaps.length === 0 && draftRecords.length === 0 && draftElapsed === 0) return;
+    if (draftLaps.length === 0 && draftRecords.length === 0 && draftElapsed === 0) {
+      // タイム記録が無くても、名前や総合の感想だけは復元する
+      if (typeof draft.recorderName === 'string') recorderNameInput.value = draft.recorderName;
+      if (typeof draft.overallComment === 'string') overallCommentInput.value = draft.overallComment;
+      return;
+    }
 
     laps = draftLaps;
     records = draftRecords;
     elapsedBeforePause = draftElapsed;
+    if (typeof draft.recorderName === 'string') recorderNameInput.value = draft.recorderName;
+    if (typeof draft.overallComment === 'string') overallCommentInput.value = draft.overallComment;
     renderLaps();
     renderRecords();
 
