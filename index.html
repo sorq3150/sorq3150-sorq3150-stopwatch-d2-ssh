@@ -860,7 +860,6 @@
 
   // ===== 保存(このサイトに実際にアクセスしたときだけ有効。Claude.aiのプレビュー内では動作しないことがあります) =====
   const STORAGE_KEYS = {
-    theme: 'stopwatch_theme_v1',
     history: 'stopwatch_history_v1',
     draft: 'stopwatch_draft_v1'
   };
@@ -886,10 +885,6 @@
     try {
       window.localStorage.removeItem(key);
     } catch (e) { /* noop */ }
-  }
-
-  function saveThemeToStorage(bgId, accent) {
-    storageSet(STORAGE_KEYS.theme, { bgId, accent });
   }
 
   function saveHistoryToStorage() {
@@ -1401,7 +1396,7 @@
 
   // ===== 詳細設定(外観) =====
   const bgPresets = [
-    { id: 'dark',  label: 'ダーク(標準)', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
+    { id: 'dark',  label: 'ダーク', bg: '#16181a', panel: '#1f2225', hairline: '#33373b', ink: '#eae7e0', inkDim: '#86898c' },
     { id: 'pure',  label: 'ピュアホワイト', bg: '#ffffff', panel: '#f7f7f7', hairline: '#e2e2e2', ink: '#1a1a1a', inkDim: '#77797c' },
     { id: 'warm',  label: 'ウォームホワイト', bg: '#faf6f0', panel: '#f2ece1', hairline: '#e2d8c8', ink: '#2b2620', inkDim: '#8a8074' },
     { id: 'cool',  label: 'クールホワイト', bg: '#f4f7fb', panel: '#e9eef5', hairline: '#d3dbe6', ink: '#1c2733', inkDim: '#748094' },
@@ -1409,6 +1404,7 @@
     { id: 'ivory', label: 'アイボリー', bg: '#fffff2', panel: '#f7f6e6', hairline: '#e6e4cf', ink: '#2a2a1a', inkDim: '#8a8870' }
   ];
   let activeBgId = 'dark';
+  let manualThemeOverride = false; // 手動で配色を変更したら、以後は端末設定の自動追従を止める(このセッション内のみ有効)
 
   function applyBgPreset(preset) {
     const root = document.documentElement.style;
@@ -1436,7 +1432,7 @@
     const preset = bgPresets.find(p => p.id === btn.dataset.bgId);
     if (preset) {
       applyBgPreset(preset);
-      saveThemeToStorage(activeBgId, accentColorInput.value);
+      manualThemeOverride = true;
     }
   });
 
@@ -1468,7 +1464,7 @@
     document.documentElement.style.setProperty('--accent', hex);
     document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(hex));
     accentHexLabel.textContent = hex.toUpperCase();
-    saveThemeToStorage(activeBgId, hex);
+    manualThemeOverride = true;
   });
 
   settingsTab.addEventListener('click', () => {
@@ -1506,22 +1502,12 @@
 
   if (window.matchMedia) {
     const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const savedTheme = storageGet(STORAGE_KEYS.theme);
-    if (savedTheme && savedTheme.bgId) {
-      // 前回保存した配色があれば、端末設定より優先して復元する
-      const savedPreset = bgPresets.find(p => p.id === savedTheme.bgId);
-      if (savedPreset) applyBgPreset(savedPreset);
-      const accent = savedTheme.accent || '#ff6a3d';
-      document.documentElement.style.setProperty('--accent', accent);
-      document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(accent));
-      accentColorInput.value = accent;
-      accentHexLabel.textContent = accent.toUpperCase();
-    } else {
-      applySystemTheme(lightSchemeQuery.matches);
-    }
-    // 端末の設定がその場で切り替わった場合も追従させる(保存済み設定が無い場合のみ)
+    // ページを開くたびに、常にその時点の端末設定(ダーク/ライト)を反映する
+    applySystemTheme(lightSchemeQuery.matches);
+    // 端末側の設定がその場で切り替わった場合も追従させるが、
+    // 手動で配色を変更した後は、このセッション中は自動で上書きしない
     lightSchemeQuery.addEventListener('change', (e) => {
-      if (!storageGet(STORAGE_KEYS.theme)) applySystemTheme(e.matches);
+      if (!manualThemeOverride) applySystemTheme(e.matches);
     });
   }
 
