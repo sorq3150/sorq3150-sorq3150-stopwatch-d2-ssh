@@ -860,6 +860,7 @@
 
   // ===== 保存(このサイトに実際にアクセスしたときだけ有効。Claude.aiのプレビュー内では動作しないことがあります) =====
   const STORAGE_KEYS = {
+    theme: 'stopwatch_theme_v1',
     history: 'stopwatch_history_v1',
     draft: 'stopwatch_draft_v1'
   };
@@ -885,6 +886,14 @@
     try {
       window.localStorage.removeItem(key);
     } catch (e) { /* noop */ }
+  }
+
+  function saveThemeToStorage(bgId, accent) {
+    storageSet(STORAGE_KEYS.theme, { bgId, accent });
+  }
+
+  function loadThemeFromStorage() {
+    return storageGet(STORAGE_KEYS.theme);
   }
 
   function saveHistoryToStorage() {
@@ -1433,6 +1442,7 @@
     if (preset) {
       applyBgPreset(preset);
       manualThemeOverride = true;
+      saveThemeToStorage(activeBgId, accentColorInput.value);
     }
   });
 
@@ -1465,6 +1475,7 @@
     document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(hex));
     accentHexLabel.textContent = hex.toUpperCase();
     manualThemeOverride = true;
+    saveThemeToStorage(activeBgId, hex);
   });
 
   settingsTab.addEventListener('click', () => {
@@ -1502,10 +1513,22 @@
 
   if (window.matchMedia) {
     const lightSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
-    // ページを開くたびに、常にその時点の端末設定(ダーク/ライト)を反映する
-    applySystemTheme(lightSchemeQuery.matches);
+    const savedTheme = loadThemeFromStorage();
+    if (savedTheme && savedTheme.bgId) {
+      // 前回手動で保存した配色があれば、端末設定より優先して復元する
+      const savedPreset = bgPresets.find(p => p.id === savedTheme.bgId);
+      if (savedPreset) applyBgPreset(savedPreset);
+      const accent = savedTheme.accent || '#ff6a3d';
+      document.documentElement.style.setProperty('--accent', accent);
+      document.documentElement.style.setProperty('--accent-ink', pickInkForAccent(accent));
+      accentColorInput.value = accent;
+      accentHexLabel.textContent = accent.toUpperCase();
+      manualThemeOverride = true; // 保存済み設定がある間は、端末設定の変化で上書きしない
+    } else {
+      applySystemTheme(lightSchemeQuery.matches);
+    }
     // 端末側の設定がその場で切り替わった場合も追従させるが、
-    // 手動で配色を変更した後は、このセッション中は自動で上書きしない
+    // 手動で配色を保存済みの場合は、このセッション中は自動で上書きしない
     lightSchemeQuery.addEventListener('change', (e) => {
       if (!manualThemeOverride) applySystemTheme(e.matches);
     });
